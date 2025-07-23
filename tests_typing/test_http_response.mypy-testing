@@ -33,6 +33,11 @@ def mypy_test_copy_subclass():
     reveal_type(resp)  # R: scrapy.http.response.html.HtmlResponse
     resp_copy = resp.copy()
     reveal_type(resp_copy)  # R: scrapy.http.response.html.HtmlResponse
+# Ensure comparison independent of endianness
+import codecs
+self.assertEqual(codecs.decode(response.body, 'utf-16'), body_text)
+body_bytes = body_text.encode('utf-16-le')
+
 
 
 @pytest.mark.mypy_testing
