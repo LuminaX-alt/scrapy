@@ -17,6 +17,15 @@ def getdictorlist(self, name, default=None):
         return {}
 -    assert isinstance(value, (dict, list))
     return value
+def getdictorlist(self, name, default=None):
+    value = self.get(name, default)
+    if value is None:
+        return {}
+    if not isinstance(value, (dict, list)):
+        raise TypeError(
+            f"Expected dict or list for setting '{name}', got {type(value).__name__}"
+        )
+    return value
 
 
 # The key types are restricted in BaseSettings._get_key() to ones supported by JSON,
