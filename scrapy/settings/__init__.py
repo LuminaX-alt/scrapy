@@ -11,6 +11,13 @@ from typing import TYPE_CHECKING, Any, Union, cast
 from scrapy.exceptions import ScrapyDeprecationWarning
 from scrapy.settings import default_settings
 from scrapy.utils.misc import load_object
+def getdictorlist(self, name, default=None):
+    value = self.get(name, default)
+    if value is None:
+        return {}
+-    assert isinstance(value, (dict, list))
+    return value
+
 
 # The key types are restricted in BaseSettings._get_key() to ones supported by JSON,
 # see https://github.com/scrapy/scrapy/issues/5383.
