@@ -29,6 +29,18 @@ from scrapy.utils.defer import (
 )
 from scrapy.utils.log import failure_to_exc_info, logformatter_adapter
 from scrapy.utils.misc import build_from_crawler, load_object
+
+from enum import Enum, auto
+import logging
+
+logger = logging.getLogger(__name__)
+
+class EngineState(Enum):
+    IDLE = auto()
+    STARTING = auto()
+    RUNNING = auto()
+    STOPPING = auto()
+    STOPPED = auto()
 from scrapy.utils.reactor import CallLaterOnce
 
 if TYPE_CHECKING:
@@ -93,6 +105,7 @@ class ExecutionEngine:
         spider_closed_callback: Callable[[Spider], Deferred[None] | None],
     ) -> None:
         self.crawler: Crawler = crawler
+        self._state = EngineState.IDLE
         self.settings: Settings = crawler.settings
         self.signals: SignalManager = crawler.signals
         assert crawler.logformatter
@@ -167,12 +180,17 @@ class ExecutionEngine:
             else succeed(None)
         )
         return dfd.addBoth(_finish_stopping_engine)
-
-    def close(self) -> Deferred[None]:
+        if self._state not in (EngineState.IDLE, EngineState.STOPPED):
+    logger.warning("start_async() called in invalid state: %s", self._state)
+    return
+self._set_state(EngineState.STARTING)
+  def close(self) -> Deferred[None]:
         """
         Gracefully close the execution engine.
         If it has already been started, stop it. In all cases, close the spider and the downloader.
         """
+      self._set_state(EngineState.RUNNING)
+
         if self.running:
             return self.stop()  # will also close spider and downloader
         if self.spider is not None:
@@ -182,8 +200,8 @@ class ExecutionEngine:
         if hasattr(self, "downloader"):
             self.downloader.close()
         return succeed(None)
-
-    def pause(self) -> None:
+      
+           def pause(self) -> None:
         self.paused = True
 
     def unpause(self) -> None:
@@ -247,7 +265,11 @@ class ExecutionEngine:
             )
             await maybe_deferred_to_future(self.stop())
 
-    def _start_scheduled_requests(self) -> None:
+    if self._state in (EngineState.STOPPING, EngineState.STOPPED):
+    logger.warning("open_spider() skipped: Engine stopping/stopped.")
+    return
+
+        def _start_scheduled_requests(self) -> None:
         if self._slot is None or self._slot.closing is not None or self.paused:
             return
 
@@ -338,8 +360,12 @@ class ExecutionEngine:
                 exc_info=True,
                 extra={"spider": self.spider},
             )
+        if self._state in (EngineState.STOPPING, EngineState.STOPPED):
+    logger.debug("stop() called but engine already stopping/stopped.")
+    return
+self._set_state(EngineState.STOPPING)
 
-    def spider_is_idle(self) -> bool:
+     def spider_is_idle(self) -> bool:
         if self._slot is None:
             raise RuntimeError("Engine slot not assigned")
         if not self.scraper.slot.is_idle():  # type: ignore[union-attr]
@@ -349,6 +375,8 @@ class ExecutionEngine:
         if self._start is not None:  # not all start requests are handled
             return False
         return not self._slot.scheduler.has_pending_requests()
+         self._set_state(EngineState.STOPPED)
+
 
     def crawl(self, request: Request) -> None:
         """Inject the request into the spider <-> downloader pipeline"""
@@ -390,6 +418,10 @@ class ExecutionEngine:
     def _download(
         self, request: Request
     ) -> Generator[Deferred[Any], Any, Response | Request]:
+        if self._state == EngineState.STOPPED:
+    logger.debug("close_spider() ignored: Engine already stopped.")
+    return
+
         assert self._slot is not None  # typing
         assert self.spider is not None
 
