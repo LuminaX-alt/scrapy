@@ -5,6 +5,78 @@ For more information see docs/topics/architecture.rst
 
 """
 
+import logging
+import asyncio
+from twisted.internet.defer import Deferred
+
+logger = logging.getLogger(__name__)
+
+class ExecutionEngine:
+    def __init__(self, crawler, spider_closed_callback):
+        self.crawler = crawler
+        self._closewait = Deferred()
+        self.spider_closed_callback = spider_closed_callback
+        self.running = False
+        self.downloader = None
+        self.scheduler = None
+
+    async def start(self):
+        """Start engine and all subsystems."""
+        logger.info("Starting Scrapy engine")
+        self.running = True
+        self.scheduler = await self.crawler._create_scheduler()
+        self.downloader = await self.crawler._create_downloader()
+        await self._open_spiders()
+        return self
+
+    async def _open_spiders(self):
+        for spider in self.crawler.spiders:
+            await self.open_spider(spider)
+
+    async def open_spider(self, spider):
+        logger.info(f"Opening spider {spider.name}")
+        await self.crawler.signals.send_catch_log_deferred("spider_opened", spider=spider)
+        start_requests = await self._start_requests(spider)
+        for req in start_requests:
+            await self.crawl(req, spider)
+
+    async def _start_requests(self, spider):
+        """Fetch start_requests coroutine-safely."""
+        if hasattr(spider, "start_requests") and asyncio.iscoroutinefunction(spider.start_requests):
+            return await spider.start_requests()
+        return spider.start_requests()
+
+    async def crawl(self, request, spider):
+        """Schedule a crawl request."""
+        await self.scheduler.enqueue_request(request)
+        await self._next_request(spider)
+
+    async def _next_request(self, spider):
+        req = await self.scheduler.next_request()
+        if req:
+            response = await self.downloader.fetch(req, spider)
+            await self._handle_response(response, req, spider)
+
+    async def _handle_response(self, response, request, spider):
+        cb = request.callback or spider.parse
+        if asyncio.iscoroutinefunction(cb):
+            results = await cb(response)
+        else:
+            results = cb(response)
+        for r in results or []:
+            await self.crawl(r, spider)
+
+    async def close_spider(self, spider, reason="finished"):
+        logger.info(f"Closing spider {spider.name}")
+        await self.crawler.signals.send_catch_log_deferred("spider_closed", spider=spider, reason=reason)
+
+    async def stop(self):
+        self.running = False
+        for spider in self.crawler.spiders:
+            await self.close_spider(spider)
+        self._closewait.callback(None)
+
+
 from __future__ import annotations
 
 import asyncio
