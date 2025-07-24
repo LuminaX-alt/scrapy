@@ -1,4 +1,22 @@
 from __future__ import annotations
+import asyncio
+import inspect
+
+class Downloader:
+    def __init__(self, crawler):
+        self.crawler = crawler
+        self.handlers = None
+
+    async def fetch(self, request, spider):
+        """
+        Coroutine-based fetch. Handles both coroutine and Deferred handlers.
+        """
+        download_func = self.handlers.download_request
+        if inspect.iscoroutinefunction(download_func):
+            return await download_func(request, spider)
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, download_func, request, spider)
+
 
 import random
 import warnings
