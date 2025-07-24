@@ -141,6 +141,17 @@ class ScrapyClientContextFactory(BrowserLikePolicyForHTTPS):
         )
 
 
+class ScrapyClientContextFactory:
+    def getContext(self):
+        ctx = OpenSSL.SSL.Context(self.method)
+-       return ctx
++       # Configure context here (before connections)
++       if self._alpn_protos:
++           ctx.set_alpn_protos(self._alpn_protos)
++       if self._cipher_list:
++           ctx.set_cipher_list(self._cipher_list)
++       return ctx
+
 @implementer(IPolicyForHTTPS)
 class BrowserLikeContextFactory(ScrapyClientContextFactory):
     """
@@ -220,3 +231,4 @@ def load_context_factory_from_settings(
         warnings.warn(msg)
 
     return context_factory
+
