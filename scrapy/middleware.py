@@ -1,5 +1,21 @@
 from __future__ import annotations
 
+import asyncio
+import inspect
+
+async def call_middleware_chain(methods, obj, spider):
+    """
+    Execute a list of middleware methods (sync or async).
+    """
+    for method in methods:
+        if inspect.iscoroutinefunction(method):
+            result = await method(obj, spider)
+        else:
+            result = method(obj, spider)
+        if result is not None:
+            return result
+    return obj
+
 import logging
 import pprint
 import warnings
