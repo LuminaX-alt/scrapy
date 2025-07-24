@@ -1,4 +1,44 @@
 """Tests for DownloadHandlers and for specific non-HTTP download handlers."""
+import pytest
+from scrapy.http import Request
+from scrapy.spiders import Spider
+from scrapy.crawler import Crawler
+from scrapy.settings import Settings
+from scrapy.core.downloader.handlers.http11 import HTTP11DownloadHandler
+
+# Dummy spider for testing
+class DummySpider(Spider):
+    name = "dummy"
+
+@pytest.fixture
+def crawler():
+    settings = Settings()
+    return Crawler(DummySpider, settings)
+
+def test_http11_handler_creation(crawler):
+    """Ensure HTTP11DownloadHandler can be created without errors."""
+    handler = HTTP11DownloadHandler(crawler.settings, crawler)
+    assert handler is not None
+    assert hasattr(handler, "download_request")
+
+def test_http11_handler_invalid_url(crawler):
+    """Ensure HTTP11 handler raises an error for invalid URL schemes."""
+    handler = HTTP11DownloadHandler(crawler.settings, crawler)
+    req = Request("invalid://url")
+    with pytest.raises(Exception):
+        # Pass spider explicitly to simulate a download
+        handler.download_request(req, crawler.spider)
+
+@pytest.mark.skipif(
+    pytest.importorskip("scrapy.core.downloader.handlers.http2", reason="HTTP2 handler not available") is None,
+    reason="HTTP2 handler not available",
+)
+def test_http2_handler_creation(crawler):
+    """Ensure HTTP2DownloadHandler can be created if available."""
+    from scrapy.core.downloader.handlers.http2 import HTTP2DownloadHandler
+    handler = HTTP2DownloadHandler(crawler.settings, crawler)
+    assert handler is not None
+    assert hasattr(handler, "download_request")
 
 from __future__ import annotations
 
