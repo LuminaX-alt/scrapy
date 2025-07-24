@@ -9,6 +9,91 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from twisted.internet.defer import Deferred
+from scrapy.exceptions import IgnoreRequest
+
+logger = logging.getLogger(__name__)
+
+class ExecutionEngine:
+    """
+    Coroutine-based ExecutionEngine. All key flow methods are async.
+    """
+
+    def __init__(self, crawler, spider_closed_callback):
+        self.crawler = crawler
+        self._closewait = Deferred()
+        self.spider_closed_callback = spider_closed_callback
+        self.running = False
+        self.downloader = None
+        self.scheduler = None
+        self.spiders = []
+
+    async def start(self):
+        """Start the engine and all subsystems."""
+        self.running = True
+        logger.info("Starting Scrapy engine (async mode)")
+        self.scheduler = await self.crawler._create_scheduler()
+        self.downloader = await self.crawler._create_downloader()
+        for spider in self.crawler.spiders:
+            await self.open_spider(spider)
+        return self
+
+    async def open_spider(self, spider):
+        """Open a spider and schedule its start requests."""
+        self.spiders.append(spider)
+        logger.info(f"Opening spider {spider.name}")
+        await self.crawler.signals.send_catch_log_deferred("spider_opened", spider=spider)
+        start_requests = await self._get_start_requests(spider)
+        for req in start_requests:
+            await self.crawl(req, spider)
+
+    async def _get_start_requests(self, spider):
+        sr = spider.start_requests()
+        if asyncio.iscoroutine(sr) or asyncio.iscoroutinefunction(spider.start_requests):
+            return await sr
+        return sr
+
+    async def crawl(self, request, spider):
+        """Schedule a crawl request."""
+        await self.scheduler.enqueue_request(request)
+        await self._next_request(spider)
+
+    async def _next_request(self, spider):
+        """Fetch next request from scheduler."""
+        req = await self.scheduler.next_request()
+        if req:
+            try:
+                response = await self.downloader.fetch(req, spider)
+                await self._handle_response(response, req, spider)
+            except IgnoreRequest:
+                logger.debug(f"Ignored {req}")
+                await self._next_request(spider)
+
+    async def _handle_response(self, response, request, spider):
+        cb = request.callback or spider.parse
+        if asyncio.iscoroutinefunction(cb):
+            results = await cb(response)
+        else:
+            results = cb(response)
+        if results:
+            for r in results:
+                await self.crawl(r, spider)
+
+    async def close_spider(self, spider, reason="finished"):
+        logger.info(f"Closing spider {spider.name} ({reason})")
+        await self.crawler.signals.send_catch_log_deferred("spider_closed", spider=spider, reason=reason)
+        if spider in self.spiders:
+            self.spiders.remove(spider)
+
+    async def stop(self):
+        """Stop engine and close all spiders."""
+        self.running = False
+        for spider in list(self.spiders):
+            await self.close_spider(spider)
+        self._closewait.callback(None)
+
+import asyncio
+import logging
 from time import time
 from traceback import format_exc
 from typing import TYPE_CHECKING, Any, cast
