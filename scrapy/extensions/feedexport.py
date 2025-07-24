@@ -3,6 +3,8 @@ Feed Exports extension
 
 See documentation in docs/topics/feed-exports.rst
 """
+import inspect
+import asyncio
 
 from __future__ import annotations
 
@@ -275,6 +277,15 @@ class S3FeedStorage(BlockingFeedStorage):
             Bucket=self.bucketname, Key=self.keyname, Fileobj=file, **kwargs
         )
         file.close()
+def _store_in_thread(self, file):
+    store_method = self.storage.store
+    if inspect.iscoroutinefunction(store_method):
+        # Run async store in event loop
+        loop = asyncio.get_event_loop()
+        return loop.run_until_complete(store_method(file))
+    else:
+        return store_method(file)
+
 
 
 class GCSFeedStorage(BlockingFeedStorage):
@@ -357,6 +368,11 @@ class FTPFeedStorage(BlockingFeedStorage):
             use_active_mode=crawler.settings.getbool("FEED_STORAGE_FTP_ACTIVE"),
             feed_options=feed_options,
         )
+        def maybe_await(func, *args, **kwargs):
+    if inspect.iscoroutinefunction(func):
+        return asyncio.get_event_loop().run_until_complete(func(*args, **kwargs))
+    return func(*args, **kwargs)
+
 
     def _store_in_thread(self, file: IO[bytes]) -> None:
         ftp_store_file(
