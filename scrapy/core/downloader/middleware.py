@@ -25,6 +25,21 @@ if TYPE_CHECKING:
 
 class DownloaderMiddlewareManager(MiddlewareManager):
     component_name = "downloader middleware"
+    - disabled = {mw for mw, v in mwdict.items() if v is None}
++ from scrapy.utils.misc import middleware_path
++ disabled = {middleware_path(mw) for mw, v in mwdict.items() if v is None}
+import pytest
+from scrapy.downloadermiddlewares.useragent import UserAgentMiddleware
+from scrapy.middleware import DownloaderMiddlewareManager
+
+def test_disable_middleware_by_object_reference(settings):
+    # Disable using class object
+    settings.set('DOWNLOADER_MIDDLEWARES', {
+        UserAgentMiddleware: None
+    })
+    mw = DownloaderMiddlewareManager.from_crawler(type('C', (), {'settings': settings})())
+    assert 'scrapy.downloadermiddlewares.useragent.UserAgentMiddleware' in mw.disabled
+
 
     @classmethod
     def _get_mwlist_from_settings(cls, settings: BaseSettings) -> list[Any]:
@@ -37,6 +52,12 @@ class DownloaderMiddlewareManager(MiddlewareManager):
             self.methods["process_response"].appendleft(mw.process_response)
         if hasattr(mw, "process_exception"):
             self.methods["process_exception"].appendleft(mw.process_exception)
+
+   def middleware_path(obj_or_str):
+    """Normalize middleware key to import path string."""
+    if isinstance(obj_or_str, str):
+        return obj_or_str
+    return f"{obj_or_str.__module__}.{obj_or_str.__name__}"
 
     @inlineCallbacks
     def download(
