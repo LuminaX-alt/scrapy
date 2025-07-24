@@ -1,4 +1,22 @@
 from __future__ import annotations
+import base64
+from urllib.parse import urlparse
+
+class HttpProxyMiddleware:
+    # existing code...
+
+    def update_proxy_auth(self, request):
+        """
+        Refresh proxy authentication for a request.
+        Called right before the request is downloaded.
+        """
+        proxy_url = request.meta.get("proxy")
+        if not proxy_url:
+            return
+        parsed = urlparse(proxy_url)
+        if parsed.username and parsed.password:
+            creds = f"{parsed.username}:{parsed.password}"
+            request.headers["Proxy-Authorization"] = b"Basic " + base64.b64encode(creds.encode())
 
 import base64
 from typing import TYPE_CHECKING
