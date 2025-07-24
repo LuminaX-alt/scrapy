@@ -424,6 +424,16 @@ class CrawlerRunner(CrawlerRunnerBase):
                 "it must be a spider class (or a Crawler object)"
             )
         crawler = self.create_crawler(crawler_or_spidercls)
+crawler = self.create_crawler(crawler_or_spidercls)
+
+# Reconfigure logging if LOG_FILE is set in spider's custom_settings
+log_file = crawler.settings.get('LOG_FILE')
+if log_file:
+    from scrapy.utils.log import configure_logging
+    configure_logging(crawler.settings)
+
+return super().crawl(crawler, *args, **kwargs)
+
         return self._crawl(crawler, *args, **kwargs)
 
     @inlineCallbacks
