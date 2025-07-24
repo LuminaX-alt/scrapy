@@ -1,49 +1,32 @@
-from __future__ import annotations
-scrapy/downloadermiddlewares/httpproxy.py
 import base64
-from typing import TYPE_CHECKING
-from urllib.parse import unquote, urlunparse
-from urllib.request import (  # type: ignore[attr-defined]
-    _parse_proxy,
-    getproxies,
-    proxy_bypass,
-)
-
+from urllib.parse import urlparse
 from scrapy.exceptions import NotConfigured
-from scrapy.utils.httpobj import urlparse_cached
-from scrapy.utils.python import to_bytes
-
-if TYPE_CHECKING:
-    # typing.Self requires Python 3.11
-    from typing_extensions import Self
-
-    from scrapy import Request, Spider
-    from scrapy.crawler import Crawler
-    from scrapy.http import Response
-
 
 class HttpProxyMiddleware:
-    def __init__(self, auth_encoding: str | None = "latin-1"):
-        self.auth_encoding: str | None = auth_encoding
-        self.proxies: dict[str, tuple[bytes | None, str]] = {}
-        for type_, url in getproxies().items():
-            try:
-                self.proxies[type_] = self._get_proxy(url, type_)
-            # some values such as '/var/run/docker.sock' can't be parsed
-            # by _parse_proxy and as such should be skipped
-            except ValueError:
-                continue
+    def __init__(self, settings):
+        self.auth_encoding = settings.get('HTTPPROXY_AUTH_ENCODING') or 'latin-1'
 
     @classmethod
-    def from_crawler(cls, crawler: Crawler) -> Self:
-        if not crawler.settings.getbool("HTTPPROXY_ENABLED"):
+    def from_crawler(cls, crawler):
+        if not crawler.settings.get('HTTPPROXY_ENABLED'):
             raise NotConfigured
-        auth_encoding: str | None = crawler.settings.get("HTTPPROXY_AUTH_ENCODING")
-        return cls(auth_encoding)
+        return cls(crawler.settings)
 
-    def _basic_auth_header(self, username: str, password: str) -> bytes:
-        user_pass = to_bytes(
-            f"{unquote(username)}:{unquote(password)}", encoding=self.auth_encoding
+    def update_proxy_auth(self, request):
+        """
+        Refresh proxy authentication for a request.
+        Called right before the request is downloaded.
+        """
+        proxy_url = request.meta.get("proxy")
+        if not proxy_url:
+            return
+        parsed = urlparse(proxy_url)
+        if parsed.username and parsed.password:
+            creds = f"{parsed.username}:{parsed.password}"
+            request.headers["Proxy-Authorization"] = b"Basic " + base64.b64encode(
+                creds.encode(self.auth_encoding)
+            )
+username)}:{unquote(password)}", encoding=self.auth_encoding
         )
         return base64.b64encode(user_pass)
 
