@@ -1,4 +1,33 @@
 .. _topics-coroutines:
+Parallel coroutine / Deferred API pairs
+---------------------------------------
+
+In several parts of Scrapy’s codebase, you will encounter methods that are available
+both as ``async def`` coroutines and as their legacy Twisted ``Deferred`` counterparts.
+
+This dual interface allows Scrapy to maintain **backward compatibility** for users and
+extensions relying on Deferreds while offering **native coroutine support** for modern
+asyncio-based workflows.
+
+For example:
+
+* The engine’s spider opening and closing routines:
+  
+  * ``ExecutionEngine.open_spider`` → ``Deferred``
+  * ``ExecutionEngine.open_spider_async`` → ``async def`` coroutine
+
+* Downloader request handling:
+  
+  * ``Downloader.fetch`` → now ``async def`` but can also wrap Deferred-based download handlers.
+
+**When to use which?**
+
+* Prefer **coroutines** (``async def``) in new code for cleaner async flow.
+* Use **Deferreds** only when interacting with legacy Twisted code or extensions.
+
+Over time, these Deferred APIs may be deprecated, with coroutines becoming the
+canonical interface.
+
 
 ==========
 Coroutines
